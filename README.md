@@ -1,31 +1,32 @@
 # Motion AI Studio
 
-Motion AI Studio is a local text-to-motion web app. The React frontend sends a prompt to a FastAPI backend, Groq turns that prompt into a structured motion plan, and a selected local motion engine generates skeleton motion for the Three.js viewer.
+Motion AI Studio is a local text-to-motion web app. The frontend is React, Vite, and Three.js. The backend is FastAPI. Groq converts a prompt into a structured motion plan, then a selected local engine generates the animation.
 
-The app currently supports three engines:
+Supported engines:
 
-- `preview`: no setup, procedural skeleton animation for quick testing.
-- `humanml3d`: HumanML3D/Text-to-Motion pretrained checkpoint.
-- `kimodo`: NVIDIA Kimodo CLI adapter, higher quality but heavier setup.
+- `preview` - instant procedural animation, no model download.
+- `humanml3d` - HumanML3D/Text-to-Motion pretrained checkpoint.
+- `kimodo` - NVIDIA Kimodo adapter, heavier setup and larger downloads.
 
 ## Architecture
 
 ```text
-User prompt
-  -> React + TypeScript + Vite UI
+Browser prompt
+  -> React + Three.js frontend
   -> FastAPI backend
   -> Groq motion planner
-  -> selected local motion engine
-       - Quick Preview
-       - HumanML3D
-       - Kimodo
-  -> post-processing + SQLite history
-  -> Three.js skeleton viewer + timeline + exports
+  -> selected motion engine
+       - preview procedural engine
+       - HumanML3D worker
+       - Kimodo CLI worker
+  -> motion post-processing
+  -> SQLite history + export APIs
+  -> Three.js motion viewer
 ```
 
-Groq is used only for language planning. The Groq API key stays on the backend in `.env` and is never sent to the frontend.
+Groq is used only for language planning. Motion generation runs locally. Keep your Groq API key in `.env`; it is never sent to the frontend.
 
-## 1. Install Python And Node
+## Requirements
 
 Install:
 
@@ -42,36 +43,68 @@ npm --version
 git --version
 ```
 
-## 2. Clone This Codebase From Scratch
+## 1. Clone the project
 
 ```powershell
-git clone <your-repo-url> motion-3d
+git clone https://github.com/NobinSijo7T/3d-motion-generation.git motion-3d
 cd motion-3d
 ```
 
-If you already have the folder, open it:
+If the folder already exists:
 
 ```powershell
 cd C:\Users\nobin\OneDrive\Documents\Projects\motion-3d
 ```
 
-## 3. Backend Setup
+## 2. Backend setup
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 ```
 
-Create `.env` from `.env.example` and add your Groq key:
+If PowerShell blocks venv activation:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+For CPU-only Windows installs, use this if PyTorch did not install correctly:
+
+```powershell
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+Create `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edit `.env`:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=openai/gpt-oss-120b
+
 MOTION_ENGINE=preview
+MOTION_ENGINE_PATH=./vendor/text-to-motion
+MOTION_CHECKPOINT=Comp_v6_KLD01
+GPU_ID=0
+
+KIMODO_PATH=./vendor/kimodo
+KIMODO_PYTHON=.venv-kimodo/Scripts/python.exe
+KIMODO_MODEL=Kimodo-SOMA-RP-v1.1
+KIMODO_TEXT_ENCODER_DEVICE=cpu
+KIMODO_DIFFUSION_STEPS=25
 ```
 
-Use `preview` first because it works without model downloads.
+Start with `MOTION_ENGINE=preview`; it works without model downloads.
 
-## 4. Frontend Setup
+## 3. Frontend setup
 
 ```powershell
 cd frontend
@@ -79,18 +112,20 @@ npm install
 cd ..
 ```
 
-## 5. Run The App
+## 4. Run the app
 
 Terminal 1:
 
 ```powershell
+cd C:\Users\nobin\OneDrive\Documents\Projects\motion-3d
+.\.venv\Scripts\Activate.ps1
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 Terminal 2:
 
 ```powershell
-cd frontend
+cd C:\Users\nobin\OneDrive\Documents\Projects\motion-3d\frontend
 npm run dev
 ```
 
@@ -100,18 +135,78 @@ Open:
 http://localhost:5173
 ```
 
-## 6. Kimodo Setup
+## 5. HumanML3D setup
 
-Kimodo is optional. It gives better motion quality, but it downloads large model files and needs Hugging Face access for `meta-llama/Meta-Llama-3-8B-Instruct`.
+HumanML3D needs the `text-to-motion` repo and pretrained checkpoint files. The `vendor/` folder is ignored by git because it can contain large model files.
 
-Install CMake and Visual Studio C++ Build Tools on Windows:
+Clone the engine:
+
+```powershell
+cd C:\Users\nobin\OneDrive\Documents\Projects\motion-3d
+git clone https://github.com/EricGuo5513/text-to-motion vendor\text-to-motion
+```
+
+Download the HumanML3D pretrained model package:
+
+```text
+https://drive.google.com/file/d/1IgrFCnxeg4olBtURUHimzS03ZI0df_6W/view?usp=sharing
+```
+
+Extract/copy files so these paths exist:
+
+```text
+vendor\text-to-motion\checkpoints\t2m\Comp_v6_KLD01\model\latest.tar
+vendor\text-to-motion\checkpoints\t2m\length_est_bigru\model\latest.tar
+vendor\text-to-motion\glove\our_vab_data.npy
+```
+
+Verify:
+
+```powershell
+Test-Path vendor\text-to-motion\checkpoints\t2m\Comp_v6_KLD01\model\latest.tar
+Test-Path vendor\text-to-motion\checkpoints\t2m\length_est_bigru\model\latest.tar
+Test-Path vendor\text-to-motion\glove\our_vab_data.npy
+```
+
+All three should print `True`.
+
+If the old HumanML3D repo fails with `np.float` or `np.int`, patch it:
+
+```powershell
+(Get-Content vendor\text-to-motion\common\quaternion.py) -replace 'np\.float', 'float' | Set-Content vendor\text-to-motion\common\quaternion.py
+(Get-Content vendor\text-to-motion\motion_loaders\model_motion_loaders.py) -replace 'np\.int', 'int' | Set-Content vendor\text-to-motion\motion_loaders\model_motion_loaders.py
+(Get-Content vendor\text-to-motion\scripts\motion_process.py) -replace 'np\.float', 'float' | Set-Content vendor\text-to-motion\scripts\motion_process.py
+```
+
+Use HumanML3D:
+
+```env
+MOTION_ENGINE=humanml3d
+MOTION_ENGINE_PATH=./vendor/text-to-motion
+MOTION_CHECKPOINT=Comp_v6_KLD01
+GPU_ID=0
+```
+
+Smoke test:
+
+```powershell
+python scripts\motion_worker.py --text "A person waves with the right hand." --output-id humanml3d-test --repeat-time 1 --engine-path vendor\text-to-motion --checkpoint Comp_v6_KLD01 --gpu-id 0 --output-dir cache\engine
+```
+
+If CUDA is unavailable, the worker falls back to CPU.
+
+## 6. Kimodo setup
+
+Kimodo is optional. It downloads large Hugging Face model files and needs approved access to `meta-llama/Meta-Llama-3-8B-Instruct`.
+
+Install Windows build tools:
 
 ```powershell
 winget install Kitware.CMake
 winget install Microsoft.VisualStudio.2022.BuildTools
 ```
 
-In the Visual Studio installer, select `Desktop development with C++`.
+In Visual Studio Installer, select `Desktop development with C++`.
 
 Clone and install Kimodo:
 
@@ -125,13 +220,13 @@ cd vendor\kimodo
 pip install -e .
 ```
 
-Login to Hugging Face after Meta Llama access is approved:
+Log in to Hugging Face:
 
 ```powershell
 hf auth login
 ```
 
-Run a small Kimodo smoke test:
+Run a small Kimodo test:
 
 ```powershell
 cd C:\Users\nobin\OneDrive\Documents\Projects\motion-3d\vendor\kimodo
@@ -141,7 +236,7 @@ $env:HF_HUB_DISABLE_SYMLINKS_WARNING="1"
 python -m kimodo.scripts.generate "A person walks forward slowly." --duration 2 --num_samples 1 --diffusion_steps 10 --output ..\..\cache\kimodo-test\walk-fast --save_example_dir
 ```
 
-Add these to `.env` when using Kimodo:
+Use Kimodo:
 
 ```env
 MOTION_ENGINE=kimodo
@@ -152,63 +247,20 @@ KIMODO_TEXT_ENCODER_DEVICE=cpu
 KIMODO_DIFFUSION_STEPS=25
 ```
 
-For 4 GB VRAM GPUs, keep `KIMODO_TEXT_ENCODER_DEVICE=cpu`.
+## 7. Prompt behavior
 
-## 7. HumanML3D Pretrained Model Setup
+HumanML3D works best with short, concrete body-motion descriptions.
 
-HumanML3D is optional and lighter than Kimodo, but it still needs pretrained checkpoint files.
-
-The text-to-motion repo should exist here:
+Good prompts:
 
 ```text
-vendor\text-to-motion
+A person walks forward slowly.
+A person waves with the right hand.
+A person sits down and stands back up.
+A person bends down and picks up an object from the ground.
 ```
 
-If it does not exist:
-
-```powershell
-git clone https://github.com/EricGuo5513/text-to-motion vendor\text-to-motion
-```
-
-Install the HumanML3D dependencies and CUDA-enabled PyTorch in your project venv:
-
-```powershell
-python -m pip install -r vendor/text-to-motion/requirements.txt
-python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-Download the HumanML3D pretrained model package:
-
-```text
-https://drive.google.com/file/d/1IgrFCnxeg4olBtURUHimzS03ZI0df_6W/view?usp=sharing
-```
-
-Extract it so the final folders look like this:
-
-```text
-vendor\text-to-motion\checkpoints\t2m\Comp_v6_KLD01\model\latest.tar
-vendor\text-to-motion\checkpoints\t2m\length_est_bigru\model\latest.tar
-vendor\text-to-motion\checkpoints\t2m\Decomp_SP001_SM001_H512
-vendor\text-to-motion\checkpoints\t2m\text_mot_match
-```
-
-Verify:
-
-```powershell
-Test-Path vendor\text-to-motion\checkpoints\t2m\Comp_v6_KLD01\model\latest.tar
-Test-Path vendor\text-to-motion\checkpoints\t2m\length_est_bigru\model\latest.tar
-Test-Path vendor\text-to-motion\glove\our_vab_data.npy
-```
-
-All three should print `True`.
-
-Use HumanML3D from the app by selecting `HumanML3D` in the model dropdown, or set:
-
-```env
-MOTION_ENGINE=humanml3d
-MOTION_ENGINE_PATH=./vendor/text-to-motion
-MOTION_CHECKPOINT=Comp_v6_KLD01
-```
+For compound prompts, the backend asks Groq to split the prompt into actions. HumanML3D then generates each action as a separate segment and stitches the motion together.
 
 ## 8. Verify
 
@@ -231,21 +283,15 @@ Health endpoint:
 http://127.0.0.1:8000/api/health
 ```
 
-The response lists available engines:
+## Git safety
 
-```json
-{
-  "available_engines": [
-    { "id": "preview", "available": true },
-    { "id": "humanml3d", "available": true },
-    { "id": "kimodo", "available": true }
-  ]
-}
-```
+Do not commit secrets or model files. The repo ignores:
 
-## Notes
+- `.env`
+- virtual environments
+- `vendor/`
+- cache/output/log files
+- HumanML3D/Kimodo checkpoints
+- large model/archive/media formats
 
-- `.env` is ignored by git and should contain secrets only on your machine.
-- Kimodo may need 17 GB or more of Hugging Face cache space.
-- HumanML3D uses an older research stack, so run it separately from the main backend environment if dependency conflicts appear.
-- The frontend model dropdown controls which backend engine is used for generation.
+Small frontend assets can live in `frontend/public/`.

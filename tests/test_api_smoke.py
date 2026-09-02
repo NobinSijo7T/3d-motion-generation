@@ -8,6 +8,7 @@ from backend.config import settings
 from backend.database import save_motion
 from backend.rendering.skeleton import bones
 from backend.main import app
+from backend.motion.prompts import normalize_motion_prompt
 from backend.schemas import MotionAction, MotionPlan
 
 
@@ -53,6 +54,13 @@ def test_soma77_bones_use_kimodo_parent_hierarchy() -> None:
     assert [0, 67] in soma_bones
     assert [0, 72] in soma_bones
     assert [0, 76] not in soma_bones
+
+
+def test_motion_prompt_normalization_for_object_interaction() -> None:
+    prompt = normalize_motion_prompt("Pick an object")
+
+    assert "bends down" in prompt
+    assert "picks up an object" in prompt
 
 
 def test_generate_uses_planner_and_motion_engine(monkeypatch) -> None:
