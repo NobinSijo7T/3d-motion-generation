@@ -6,13 +6,13 @@ import numpy as np
 
 from ..config import settings
 from ..database import save_motion
-from ..schemas import MotionPlan
+from ..schemas import MotionAction, MotionPlan
 from ..utils.errors import AppError, CONVERSION_FAILED
 from ..utils.files import new_motion_id, safe_join
 from .adapter import generate_with_engine
 from .kimodo_adapter import generate_with_kimodo
 from .postprocess import postprocess
-from .prompts import normalize_motion_prompt
+from .prompts import normalize_motion_prompt, split_compound_motion_prompt
 from .procedural import generate_preview_motion
 from .transforms import apply_yaw_turn, detect_turn_degrees
 
@@ -43,11 +43,38 @@ def _append_segment(segments: list[np.ndarray], segment: np.ndarray) -> None:
     segments.append(aligned[1:])
 
 
+def _expanded_actions(plan: MotionPlan) -> list[MotionAction]:
+    expanded: list[MotionAction] = []
+
+    for action in plan.actions:
+        source = action.motion_prompt or action.action
+        parts = split_compound_motion_prompt(source)
+        if len(parts) <= 1:
+            expanded.append(action)
+            continue
+
+        duration = max(0.25, action.duration / len(parts))
+        for index, part in enumerate(parts):
+            expanded.append(
+                MotionAction(
+                    action=f"{action.action}-{index + 1}",
+                    motion_prompt=part,
+                    duration=duration,
+                    speed=action.speed,
+                    direction=action.direction,
+                    transition=action.transition,
+                )
+            )
+
+    return expanded
+
+
 def _generate_humanml3d_segments(plan: MotionPlan, motion_id: str, variations: int) -> tuple[np.ndarray, dict]:
     segments: list[np.ndarray] = []
     prompts: list[str] = []
 
-    for index, action in enumerate(plan.actions):
+    actions = _expanded_actions(plan)
+    for index, action in enumerate(actions):
         prompt = normalize_motion_prompt(action.motion_prompt or action.action)
         prompts.append(prompt)
         segment_id = f"{motion_id}-seg{index + 1}"

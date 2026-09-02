@@ -8,7 +8,7 @@ from backend.config import settings
 from backend.database import save_motion
 from backend.rendering.skeleton import bones
 from backend.main import app
-from backend.motion.prompts import normalize_motion_prompt
+from backend.motion.prompts import normalize_motion_prompt, split_compound_motion_prompt
 from backend.motion.transforms import apply_yaw_turn, detect_turn_degrees
 from backend.schemas import MotionAction, MotionPlan
 
@@ -72,6 +72,14 @@ def test_turn_prompt_normalization_and_transform() -> None:
 
     assert "180 degrees" in prompt
     assert np.isclose(turned[-1, 1, 2], -1.0, atol=1e-5)
+
+
+def test_compound_walk_then_turn_prompt_splits() -> None:
+    parts = split_compound_motion_prompt("A person walks forward then turns 180 degrees.")
+
+    assert len(parts) == 2
+    assert "walks forward" in parts[0]
+    assert "180 degrees" in parts[1]
 
 
 def test_generate_uses_planner_and_motion_engine(monkeypatch) -> None:

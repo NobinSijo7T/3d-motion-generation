@@ -3,6 +3,25 @@ from __future__ import annotations
 import re
 
 
+def split_compound_motion_prompt(prompt: str) -> list[str]:
+    """Split simple compound prompts into model-friendly action clauses."""
+
+    text = re.sub(r"\s+", " ", prompt.strip())
+    if not text:
+        return []
+
+    parts = [
+        part.strip(" ,.;")
+        for part in re.split(r"\b(?:then|after that|and then)\b", text, flags=re.IGNORECASE)
+        if part.strip(" ,.;")
+    ]
+
+    if len(parts) <= 1:
+        return [text]
+
+    return [normalize_motion_prompt(part) for part in parts]
+
+
 def normalize_motion_prompt(prompt: str) -> str:
     """Make planner text friendlier for HumanML3D-style text-to-motion models."""
 
