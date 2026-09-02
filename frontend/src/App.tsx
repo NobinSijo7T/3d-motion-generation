@@ -24,6 +24,7 @@ export default function App() {
   const [bones, setBones] = useState<number[][]>([]);
   const [plan, setPlan] = useState<MotionPlan | undefined>();
   const [motion, setMotion] = useState<MotionRecord | null>(null);
+  const [motionPrompt, setMotionPrompt] = useState('');
   const [history, setHistory] = useState<MotionRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,6 +47,7 @@ export default function App() {
     const record = await api.motion(id);
     const data = await api.data(id);
     setMotion(record);
+    setMotionPrompt(record.prompt);
     setPlan(record.plan || data.plan);
     setFrames(data.frames);
     setBones(data.bones);
@@ -74,6 +76,7 @@ export default function App() {
         <div className="flex min-h-0 flex-col gap-3">
           <MotionViewer
             frames={frames}
+            prompt={motionPrompt}
             bones={bones}
             frame={playback.frame}
             fps={motion?.fps || 20}

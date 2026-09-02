@@ -14,7 +14,7 @@ from .kimodo_adapter import generate_with_kimodo
 from .postprocess import postprocess
 from .prompts import normalize_motion_prompt, split_compound_motion_prompt
 from .procedural import generate_preview_motion
-from .transforms import apply_yaw_turn, detect_turn_degrees
+from .transforms import apply_yaw_turn, detect_turn_degrees, turn_is_clockwise
 
 
 def _load_motion_array(path: Path) -> np.ndarray:
@@ -53,7 +53,12 @@ def _expanded_actions(plan: MotionPlan) -> list[MotionAction]:
             expanded.append(action)
             continue
 
-        duration = max(0.25, action.duration / len(parts))
+        is_ball_throw = "ball" in source.lower() and any(
+            word in source.lower() for word in ("throw", "throws", "threw", "toss", "tosses", "tossed")
+        )
+        # A pickup followed by a throw needs enough visible time for both
+        # actions; a sub-second segment cannot show a bend, lift, and release.
+        duration = max(1.5 if is_ball_throw else 0.25, action.duration / len(parts))
         for index, part in enumerate(parts):
             expanded.append(
                 MotionAction(
@@ -87,7 +92,44 @@ def _generate_humanml3d_segments(plan: MotionPlan, motion_id: str, variations: i
         segment = postprocess(raw, target_frames=target_frames, joints_num=22)
         degrees = detect_turn_degrees(f"{action.action} {action.motion_prompt}")
         if degrees:
-            segment = apply_yaw_turn(segment, degrees)
+            segment = apply_yaw_turn(segment, degrees, clockwise=turn_is_clockwise(f"{action.action} {action.motion_prompt}"))
+        _append_segment(segments, segment)
+
+    if not segments:
+        raise AppError(CONVERSION_FAILED, 500)
+
+    return np.concatenate(segments, axis=0), {"segment_prompts": prompts}
+
+
+def _generate_kimodo_segments(plan: MotionPlan, motion_id: str, variations: int) -> tuple[np.ndarray, dict]:
+    """Generate each action separately, then join them into one SOMA sequence.
+
+    Kimodo can accept a long caption, but a single diffusion pass often blends
+    sequential commands (for example, walking and a precise 180-degree turn)
+    into an unstable motion. Independent action clips preserve the order.
+    """
+
+    segments: list[np.ndarray] = []
+    prompts: list[str] = []
+
+    for index, action in enumerate(_expanded_actions(plan)):
+        prompt = normalize_motion_prompt(action.motion_prompt or action.action)
+        prompts.append(prompt)
+        segment_id = f"{motion_id}-seg{index + 1}"
+        result = generate_with_kimodo(
+            prompt,
+            segment_id,
+            duration=min(action.duration, settings.max_duration),
+            num_samples=variations,
+        )
+        motion_file = Path(result["motion_file"])
+        if not motion_file.exists():
+            raise AppError(CONVERSION_FAILED, 500)
+        raw = _load_motion_array(motion_file)
+        segment = postprocess(raw, target_frames=_target_frames_for(action.duration), joints_num=None)
+        degrees = detect_turn_degrees(f"{action.action} {action.motion_prompt}")
+        if degrees:
+            segment = apply_yaw_turn(segment, degrees, clockwise=turn_is_clockwise(f"{action.action} {action.motion_prompt}"))
         _append_segment(segments, segment)
 
     if not segments:
@@ -98,40 +140,36 @@ def _generate_humanml3d_segments(plan: MotionPlan, motion_id: str, variations: i
 
 def generate_motion(plan: MotionPlan, variations: int = 1, motion_engine: str | None = None) -> dict:
     motion_id = new_motion_id()
-    prompt = " ".join(normalize_motion_prompt(action.motion_prompt) for action in plan.actions)
     target_frames = _target_frames_for(plan.total_duration)
     selected_engine = (motion_engine or settings.motion_engine).lower()
     if selected_engine == "kimodo":
-        result = generate_with_kimodo(
-            prompt,
-            motion_id,
-            duration=min(plan.total_duration, settings.max_duration),
-            num_samples=variations,
-        )
+        joints, segment_metadata = _generate_kimodo_segments(plan, motion_id, variations)
+        result = {"metadata": segment_metadata}
         model_name = f"Kimodo/{settings.kimodo_model}"
-        joints_num = None
     elif selected_engine == "humanml3d":
         joints, segment_metadata = _generate_humanml3d_segments(plan, motion_id, variations)
         result = {"metadata": segment_metadata}
         model_name = f"HumanML3D/{settings.motion_checkpoint}"
-        motion_file = None
-        joints_num = None
     else:
         result = generate_preview_motion(plan, motion_id)
         model_name = "Procedural Preview"
         joints_num = 22
-    if selected_engine != "humanml3d":
+    if selected_engine not in {"humanml3d", "kimodo"}:
         motion_file = Path(result["motion_file"])
         if not motion_file.exists():
             raise AppError(CONVERSION_FAILED, 500)
         raw = _load_motion_array(motion_file)
         joints = postprocess(raw, target_frames=target_frames, joints_num=joints_num)
+    elif joints.shape[0] > target_frames:
+        # Keep expanded interactions at their generated duration instead of
+        # compressing their sequential actions back into the planner estimate.
+        target_frames = joints.shape[0]
     elif joints.shape[0] != target_frames:
         joints = postprocess(joints, target_frames=target_frames, joints_num=None)
-    if selected_engine != "humanml3d":
+    if selected_engine not in {"humanml3d", "kimodo"}:
         degrees = detect_turn_degrees(plan.original_prompt)
         if degrees:
-            joints = apply_yaw_turn(joints, degrees)
+            joints = apply_yaw_turn(joints, degrees, clockwise=turn_is_clockwise(plan.original_prompt))
     dest = safe_join(settings.motion_dir, f"{motion_id}.npy")
     np.save(dest, joints)
     joint_count = int(joints.shape[1])

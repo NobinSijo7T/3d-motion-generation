@@ -8,8 +8,9 @@ from backend.config import settings
 from backend.database import save_motion
 from backend.rendering.skeleton import bones
 from backend.main import app
+from backend.motion.engine import _expanded_actions
 from backend.motion.prompts import normalize_motion_prompt, split_compound_motion_prompt
-from backend.motion.transforms import apply_yaw_turn, detect_turn_degrees
+from backend.motion.transforms import apply_yaw_turn, detect_turn_degrees, turn_is_clockwise
 from backend.schemas import MotionAction, MotionPlan
 
 
@@ -80,6 +81,66 @@ def test_compound_walk_then_turn_prompt_splits() -> None:
     assert len(parts) == 2
     assert "walks forward" in parts[0]
     assert "180 degrees" in parts[1]
+
+
+def test_directional_turn_normalization_and_clockwise_transform() -> None:
+    prompt = normalize_motion_prompt("turn right")
+
+    assert "90 degrees" in prompt
+    assert turn_is_clockwise(prompt)
+
+
+def test_three_step_motion_prompt_splits_all_actions() -> None:
+    parts = split_compound_motion_prompt("A person walks forward, stops, and waves with their right hand.")
+
+    assert len(parts) == 3
+    assert "walks forward" in parts[0]
+    assert "stops" in parts[1]
+    assert "waves" in parts[2]
+
+
+def test_kimodo_style_compound_action_expands_before_generation() -> None:
+    plan = MotionPlan(
+        original_prompt="A person walks and turns 180 degrees.",
+        total_duration=2,
+        actions=[
+            MotionAction(
+                action="walk-turn",
+                motion_prompt="A person walks and turns 180 degrees.",
+                duration=2,
+            )
+        ],
+    )
+
+    actions = _expanded_actions(plan)
+
+    assert len(actions) == 2
+    assert "walk" in actions[0].motion_prompt.lower()
+    assert "180 degrees" in actions[1].motion_prompt
+
+
+def test_compound_pick_and_sit_prompt_splits() -> None:
+    parts = split_compound_motion_prompt("A person picks a object and sites down.")
+
+    assert len(parts) == 2
+    assert "picks up an object" in parts[0]
+    assert "sits down" in parts[1]
+
+
+def test_throw_and_retrieve_ball_prompt_splits_into_concrete_actions() -> None:
+    parts = split_compound_motion_prompt("A person throws a ball and picks it up where it landed.")
+
+    assert len(parts) == 2
+    assert "throws a ball" in parts[0]
+    assert "picks up a ball" in parts[1]
+
+
+def test_bare_throw_ball_prompt_includes_grounded_pickup_first() -> None:
+    parts = split_compound_motion_prompt("A person throws a ball.")
+
+    assert len(parts) == 2
+    assert "picks up a ball" in parts[0]
+    assert "throws a ball" in parts[1]
 
 
 def test_generate_uses_planner_and_motion_engine(monkeypatch) -> None:

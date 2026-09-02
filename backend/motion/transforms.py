@@ -18,6 +18,13 @@ def detect_turn_degrees(prompt: str) -> float:
     return 0.0
 
 
+def turn_is_clockwise(prompt: str) -> bool:
+    """Interpret rightward turns consistently across local motion engines."""
+
+    text = prompt.lower()
+    return "turn right" in text or "turns right" in text or "to the right" in text
+
+
 def apply_yaw_turn(joints: np.ndarray, degrees: float, clockwise: bool = False) -> np.ndarray:
     """Rotate a motion clip around the root over time.
 
@@ -35,7 +42,11 @@ def apply_yaw_turn(joints: np.ndarray, degrees: float, clockwise: bool = False) 
 
     for index in range(frame_count):
         t = index / max(1, frame_count - 1)
-        angle = math.radians(signed_degrees * t)
+        # Ease in/out so the person shifts weight into the turn and settles
+        # into the new heading. Linear rotation makes the whole body look
+        # mechanically driven, especially for 180° and 360° turns.
+        eased = t * t * (3.0 - 2.0 * t)
+        angle = math.radians(signed_degrees * eased)
         cos_a = math.cos(angle)
         sin_a = math.sin(angle)
         root = frames[index, 0, [0, 2]].copy()
@@ -45,4 +56,3 @@ def apply_yaw_turn(joints: np.ndarray, degrees: float, clockwise: bool = False) 
         frames[index, :, 2] = root[1] + x * sin_a + z * cos_a
 
     return frames
-

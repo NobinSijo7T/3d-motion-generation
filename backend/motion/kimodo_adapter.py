@@ -63,6 +63,12 @@ def generate_with_kimodo(
     log.info("kimodo worker exit=%s", completed.returncode)
     if completed.returncode != 0:
         lower = combined.lower()
+        log.error("kimodo worker output: %s", combined[-4000:].strip())
+        if completed.returncode == 3221225786:
+            raise AppError(
+                "Kimodo was interrupted on this CPU request. Try a shorter duration or fewer diffusion steps.",
+                503,
+            )
         if "gated repo" in lower or "meta-llama" in lower or "403 forbidden" in lower:
             raise AppError(HF_GATE_ERROR, 503)
         if "out of memory" in lower or "cuda" in combined and "memory" in lower:
