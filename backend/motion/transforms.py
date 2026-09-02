@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import math
+import re
+
+import numpy as np
+
+
+def detect_turn_degrees(prompt: str) -> float:
+    text = prompt.lower()
+    match = re.search(r"\b(90|180|270|360)\s*(?:°|degree|degrees|deg)\b", text)
+    if match:
+        return float(match.group(1))
+    if any(phrase in text for phrase in ("turn around", "turns around", "about face", "u turn", "u-turn")):
+        return 180.0
+    if any(phrase in text for phrase in ("full turn", "full spin", "spin around", "complete turn")):
+        return 360.0
+    return 0.0
+
+
+def apply_yaw_turn(joints: np.ndarray, degrees: float, clockwise: bool = False) -> np.ndarray:
+    """Rotate a motion clip around the root over time.
+
+    This is used for prompts that require an exact visual heading change. Older
+    text-to-motion checkpoints can produce a plausible turn without ending at
+    the requested 180/360 degree orientation, so we enforce the heading here.
+    """
+
+    if abs(degrees) < 0.001 or joints.ndim != 3 or joints.shape[0] < 2:
+        return joints
+
+    signed_degrees = -degrees if clockwise else degrees
+    frames = joints.astype(np.float32, copy=True)
+    frame_count = frames.shape[0]
+
+    for index in range(frame_count):
+        t = index / max(1, frame_count - 1)
+        angle = math.radians(signed_degrees * t)
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        root = frames[index, 0, [0, 2]].copy()
+        x = frames[index, :, 0] - root[0]
+        z = frames[index, :, 2] - root[1]
+        frames[index, :, 0] = root[0] + x * cos_a - z * sin_a
+        frames[index, :, 2] = root[1] + x * sin_a + z * cos_a
+
+    return frames
+

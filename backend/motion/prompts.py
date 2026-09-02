@@ -8,6 +8,18 @@ def normalize_motion_prompt(prompt: str) -> str:
 
     text = re.sub(r"\s+", " ", prompt.strip())
     lower = text.lower()
+    turn_degrees = re.search(r"\b(90|180|270|360)\s*(?:°|degree|degrees|deg)\b", lower)
+
+    if turn_degrees:
+        degrees = turn_degrees.group(1)
+        if any(word in lower for word in ("spin", "rotate", "turn")):
+            return f"a person turns {degrees} degrees in place with the whole body"
+
+    if any(phrase in lower for phrase in ("turn around", "turns around", "about face", "u turn", "u-turn")):
+        return "a person turns 180 degrees in place with the whole body"
+
+    if any(phrase in lower for phrase in ("full turn", "full spin", "spin around", "complete turn")):
+        return "a person turns 360 degrees in place with the whole body"
 
     replacements = [
         (
@@ -44,4 +56,3 @@ def normalize_motion_prompt(prompt: str) -> str:
         text = f"a person {text}"
 
     return text
-

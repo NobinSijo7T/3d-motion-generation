@@ -9,6 +9,7 @@ from backend.database import save_motion
 from backend.rendering.skeleton import bones
 from backend.main import app
 from backend.motion.prompts import normalize_motion_prompt
+from backend.motion.transforms import apply_yaw_turn, detect_turn_degrees
 from backend.schemas import MotionAction, MotionPlan
 
 
@@ -61,6 +62,16 @@ def test_motion_prompt_normalization_for_object_interaction() -> None:
 
     assert "bends down" in prompt
     assert "picks up an object" in prompt
+
+
+def test_turn_prompt_normalization_and_transform() -> None:
+    prompt = normalize_motion_prompt("Turn 180 degrees")
+    frames = np.zeros((2, 2, 3), dtype=np.float32)
+    frames[:, 1, 2] = 1.0
+    turned = apply_yaw_turn(frames, detect_turn_degrees(prompt))
+
+    assert "180 degrees" in prompt
+    assert np.isclose(turned[-1, 1, 2], -1.0, atol=1e-5)
 
 
 def test_generate_uses_planner_and_motion_engine(monkeypatch) -> None:

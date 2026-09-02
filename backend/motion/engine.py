@@ -14,6 +14,7 @@ from .kimodo_adapter import generate_with_kimodo
 from .postprocess import postprocess
 from .prompts import normalize_motion_prompt
 from .procedural import generate_preview_motion
+from .transforms import apply_yaw_turn, detect_turn_degrees
 
 
 def _load_motion_array(path: Path) -> np.ndarray:
@@ -57,6 +58,9 @@ def _generate_humanml3d_segments(plan: MotionPlan, motion_id: str, variations: i
         raw = _load_motion_array(motion_file)
         target_frames = _target_frames_for(action.duration)
         segment = postprocess(raw, target_frames=target_frames, joints_num=22)
+        degrees = detect_turn_degrees(f"{action.action} {action.motion_prompt}")
+        if degrees:
+            segment = apply_yaw_turn(segment, degrees)
         _append_segment(segments, segment)
 
     if not segments:
@@ -97,6 +101,10 @@ def generate_motion(plan: MotionPlan, variations: int = 1, motion_engine: str | 
         joints = postprocess(raw, target_frames=target_frames, joints_num=joints_num)
     elif joints.shape[0] != target_frames:
         joints = postprocess(joints, target_frames=target_frames, joints_num=None)
+    if selected_engine != "humanml3d":
+        degrees = detect_turn_degrees(plan.original_prompt)
+        if degrees:
+            joints = apply_yaw_turn(joints, degrees)
     dest = safe_join(settings.motion_dir, f"{motion_id}.npy")
     np.save(dest, joints)
     joint_count = int(joints.shape[1])

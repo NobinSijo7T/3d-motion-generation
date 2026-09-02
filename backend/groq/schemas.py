@@ -40,6 +40,9 @@ Convert natural language into a physically plausible sequence of human body moti
 Break compound instructions into atomic actions.
 Preserve chronological ordering.
 Generate concise natural-language motion prompts suitable for a HumanML3D-style text-to-motion model.
+Preserve explicit rotation amounts such as 90 degrees, 180 degrees, or 360 degrees in the motion_prompt.
+For "turn around", use "turns 180 degrees in place".
+For "spin around" or "full turn", use "turns 360 degrees in place".
 Avoid abstract or nonphysical descriptions.
 Convert emotional or contextual language into observable body movement.
 Estimate realistic durations.
