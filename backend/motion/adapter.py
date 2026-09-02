@@ -69,12 +69,16 @@ def generate_with_engine(text: str, output_id: str, repeat_time: int = 1) -> dic
     log.info("motion worker exit=%s", completed.returncode)
     if completed.returncode != 0:
         combined = (completed.stdout or "") + "\n" + (completed.stderr or "")
+        log.warning("motion worker failed: %s", combined[-2000:])
         if "CUDA" in combined and ("out of memory" in combined.lower() or "OOM" in combined):
             raise AppError(CUDA_OOM, 507)
         if "CUDA" in combined and "not available" in combined.lower():
             raise AppError(CUDA_UNAVAILABLE, 503)
         if "checkpoint" in combined.lower() or "FileNotFoundError" in combined:
             raise AppError(MISSING_CHECKPOINT, 503)
+        if "No module named" in combined or "Failed to import motion engine" in combined:
+            detail = combined.strip().splitlines()[-1]
+            raise AppError(f"HumanML3D dependency missing: {detail}", 503)
         raise AppError(MISSING_CHECKPOINT if "No such file" in combined else CUDA_OOM if "memory" in combined.lower() else "Local motion generation failed.", 500)
 
     payload_path = Path(settings.cache_dir / "engine" / f"{output_id}.meta.json")

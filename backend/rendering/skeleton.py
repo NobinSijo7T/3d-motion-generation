@@ -35,10 +35,96 @@ JOINT_NAMES = [
     "right_wrist",
 ]
 
+SOMA77_PARENTS = [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    6,
+    6,
+    6,
+    3,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    14,
+    19,
+    20,
+    21,
+    22,
+    14,
+    24,
+    25,
+    26,
+    27,
+    14,
+    29,
+    30,
+    31,
+    32,
+    14,
+    34,
+    35,
+    36,
+    37,
+    3,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    42,
+    47,
+    48,
+    49,
+    50,
+    42,
+    52,
+    53,
+    54,
+    55,
+    42,
+    57,
+    58,
+    59,
+    60,
+    42,
+    62,
+    63,
+    64,
+    65,
+    0,
+    67,
+    68,
+    69,
+    70,
+    0,
+    72,
+    73,
+    74,
+    75,
+]
+
+
+def _parent_pairs(parents: list[int]) -> list[list[int]]:
+    return [[parent, index] for index, parent in enumerate(parents) if parent >= 0]
+
 
 def bones(joint_count: int = 22) -> list[list[int]]:
+    if joint_count == 77:
+        return _parent_pairs(SOMA77_PARENTS)
     if joint_count != 22:
-        return [[index, index + 1] for index in range(max(0, joint_count - 1))]
+        return []
     pairs: list[list[int]] = []
     for chain in T2M_KINEMATIC_CHAIN:
         for a, b in zip(chain, chain[1:]):

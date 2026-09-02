@@ -37,8 +37,8 @@ def main() -> int:
         return 3
 
     if args.gpu_id >= 0 and not torch.cuda.is_available():
-        print("CUDA is not available. Local motion generation cannot use the RTX GPU.", file=sys.stderr)
-        return 4
+        print("CUDA is not available. Falling back to CPU for HumanML3D.", file=sys.stderr)
+        args.gpu_id = -1
 
     input_file = Path(args.output_dir) / f"{args.output_id}.txt"
     output_dir = Path(args.output_dir)

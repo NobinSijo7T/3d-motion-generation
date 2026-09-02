@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from backend.api import generate as generate_api
 from backend.config import settings
 from backend.database import save_motion
+from backend.rendering.skeleton import bones
 from backend.main import app
 from backend.schemas import MotionAction, MotionPlan
 
@@ -40,6 +41,18 @@ def test_health_reports_expected_flags() -> None:
     assert payload["status"] == "ok"
     assert "groq_configured" in payload
     assert "motion_model_available" in payload
+
+
+def test_soma77_bones_use_kimodo_parent_hierarchy() -> None:
+    soma_bones = bones(77)
+
+    assert len(soma_bones) == 76
+    assert [0, 1] in soma_bones
+    assert [3, 11] in soma_bones
+    assert [3, 39] in soma_bones
+    assert [0, 67] in soma_bones
+    assert [0, 72] in soma_bones
+    assert [0, 76] not in soma_bones
 
 
 def test_generate_uses_planner_and_motion_engine(monkeypatch) -> None:

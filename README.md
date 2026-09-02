@@ -170,6 +170,13 @@ If it does not exist:
 git clone https://github.com/EricGuo5513/text-to-motion vendor\text-to-motion
 ```
 
+Install the HumanML3D dependencies and CUDA-enabled PyTorch in your project venv:
+
+```powershell
+python -m pip install -r vendor/text-to-motion/requirements.txt
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
 Download the HumanML3D pretrained model package:
 
 ```text

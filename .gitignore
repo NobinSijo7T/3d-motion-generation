@@ -15,6 +15,7 @@ outputs/
 cache/
 logs/
 vendor/
+human_model/
 vendor/**/checkpoints/
 vendor/**/models/
 vendor/**/*.tar
