@@ -1,0 +1,7 @@
+{
+  "name": "Motion AI Studio",
+  "version": "1.0.0",
+  "language_provider": "Groq",
+  "motion_model": "HumanML3D Comp_v6_KLD01",
+  "huggingface": false
+}
